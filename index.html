@@ -734,6 +734,45 @@
                     </div>`;
             });
         }
-    </script>
+    </script>// Fungsi untuk menghitung otomatis rekap bulan ini
+async function muatRekapOtomatis(userId) {
+  // Mengambil tahun dan bulan saat ini, format "YYYY-MM"
+  const now = new Date();
+  const tahun = now.getFullYear();
+  const bulan = String(now.getMonth() + 1).padStart(2, '0');
+  const bulanSekarang = `${tahun}-${bulan}`; 
+  
+  try {
+    const q = query(
+      collection(db, "transactions"), 
+      where("userId", "==", userId),
+      where("bulan", "==", bulanSekarang)
+    );
+
+    const querySnapshot = await getDocs(q);
+    let totalPemasukan = 0;
+    let totalPengeluaran = 0;
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      // Pastikan tipe data dan nama field sesuai dengan database kamu
+      if (data.tipe === "pemasukan") {
+        totalPemasukan += Number(data.nominal || 0);
+      } else if (data.tipe === "pengeluaran") {
+        totalPengeluaran += Number(data.nominal || 0);
+      }
+    });
+
+    // Menampilkan hasil ke elemen HTML (sesuaikan id elemen di HTML kamu)
+    const elPemasukan = document.getElementById("tampil-pemasukan");
+    const elPengeluaran = document.getElementById("tampil-pengeluaran");
+    
+    if (elPemasukan) elPemasukan.innerText = totalPemasukan;
+    if (elPengeluaran) elPengeluaran.innerText = totalPengeluaran;
+
+  } catch (error) {
+    console.error("Gagal memuat rekap otomatis:", error);
+  }
+}
 </body>
 </html>
