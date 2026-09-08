@@ -339,10 +339,82 @@
 
         .category-title { font-weight: 800; font-size: 16px; color: #f3e8ff; }
         .category-formula { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
-        .category-stats { font-size: 13px; text-align: right; }
-        .stat-budget { font-weight: 700; color: #d8b4fe; }
-        .stat-remaining { font-weight: 800; color: var(--success-color); }
-        .stat-remaining.negative { color: var(--danger-color); }
+        
+        /* Styling Saldo yang bisa diklik */
+        .clickable-saldo-container {
+            text-align: right;
+            margin-top: -35px;
+            margin-bottom: 12px;
+        }
+
+        .clickable-saldo-value {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--success-color);
+            cursor: pointer;
+            text-decoration: underline;
+            text-underline-offset: 4px;
+            transition: opacity 0.2s ease;
+        }
+
+        .clickable-saldo-value.negative { color: var(--danger-color); }
+        .clickable-saldo-value:hover { opacity: 0.8; }
+
+        /* Styling Modal Rincian Alokasi */
+        .allocation-modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .allocation-modal-content {
+            background: #1a1625;
+            border: 1px solid var(--card-border);
+            padding: 24px;
+            border-radius: 18px;
+            width: 90%;
+            max-width: 380px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            color: var(--text-main);
+            animation: modalPop 0.2s ease-in-out;
+        }
+
+        @keyframes modalPop {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .allocation-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 10px;
+        }
+
+        .allocation-modal-header h4 {
+            margin: 0;
+            font-size: 15px;
+            color: #e9d5ff;
+        }
+
+        .close-modal-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 18px;
+            cursor: pointer;
+        }
+        .close-modal-btn:hover { color: white; }
 
         .history-list {
             list-style: none;
@@ -508,6 +580,17 @@
         </div>
     </div>
 
+    <!-- Modal Rincian Alokasi & Rumus -->
+    <div id="allocationModal" class="allocation-modal">
+        <div class="allocation-modal-content">
+            <div class="allocation-modal-header">
+                <h4 id="modalCategoryTitle">Rincian Alokasi</h4>
+                <button class="close-modal-btn" onclick="closeAllocationModal()">&times;</button>
+            </div>
+            <div id="modalAllocationBody" style="font-size: 13px; line-height: 1.6;"></div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
@@ -537,7 +620,8 @@
                 { id: 'transportasi', name: '2. Pengeluaran Transportasi', rate: 0.20, formula: '0,20 × total pemasukan', expenses: [] },
                 { id: 'makan', name: '3. Pengeluaran Makan', rate: 0.50, formula: '0,50 × total pemasukan', expenses: [] },
                 { id: 'tak_terduga', name: '4. Pengeluaran Tak Terduga', rate: 0.15, formula: '0,15 × total pemasukan', expenses: [] }
-            ]
+            ],
+            lastMondayTransferDate: null // Menyimpan tanggal eksekusi otomatis hari Senin terakhir
         };
 
         let selectedHistoryMonth = new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
@@ -617,9 +701,13 @@
                         { id: 'tak_terduga', name: '4. Pengeluaran Tak Terduga', rate: 0.15, formula: '0,15 × total pemasukan', expenses: [] }
                     ];
                 }
+                if (appData.lastMondayTransferDate === undefined) {
+                    appData.lastMondayTransferDate = null;
+                }
             } else {
                 await saveUserData();
             }
+            checkAndExecuteMondayAutomation();
             renderApp();
         }
 
@@ -627,6 +715,69 @@
             if (!currentUser) return;
             const docRef = doc(db, "users", currentUser.uid);
             await setDoc(docRef, appData);
+        }
+
+        // Fungsi Otomatis Setiap Hari Senin: Memindahkan sisa anggaran Makan & Transportasi ke Tak Terduga
+        async function checkAndExecuteMondayAutomation() {
+            const now = new Date();
+            const dayOfWeek = now.getDay(); // 1 = Senin
+            const todayDateStr = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
+            // Cek apakah hari ini Senin dan belum pernah dieksekusi di tanggal hari ini
+            if (dayOfWeek === 1 && appData.lastMondayTransferDate !== todayDateStr) {
+                let realCurrentMonth = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+                let currentMonthIncome = appData.incomes
+                    .filter(inc => (inc.month || realCurrentMonth) === realCurrentMonth)
+                    .reduce((sum, inc) => sum + inc.amount, 0);
+
+                const makanCat = appData.categories.find(c => c.id === 'makan');
+                const transCat = appData.categories.find(c => c.id === 'transportasi');
+                const takTerdugaCat = appData.categories.find(c => c.id === 'tak_terduga');
+
+                let totalTransferAmount = 0;
+
+                // Hitung sisa anggaran makan
+                if (makanCat) {
+                    let budgetMakan = currentMonthIncome * makanCat.rate;
+                    let usedMakan = makanCat.expenses
+                        .filter(e => (e.month || realCurrentMonth) === realCurrentMonth)
+                        .reduce((sum, e) => sum + e.amount, 0);
+                    let sisaMakan = budgetMakan - usedMakan;
+                    if (sisaMakan > 0) {
+                        totalTransferAmount += sisaMakan;
+                        // Mengurangi sisa tanpa mencatat pengeluaran di rekapitulasi kategori makan (cukup menambah item pengurang tak kasat mata atau membiarkan perhitungan saldo menyesuaikan, tapi sesuai instruksi: di kategori asal tidak usah dicatat rekapitulasinya). Kita kurangi via pencatatan virtual atau penyesuaian langsung item sisa. Di sini kita langsung tambahkan ke tak terduga.
+                    }
+                }
+
+                // Hitung sisa anggaran transportasi
+                if (transCat) {
+                    let budgetTrans = currentMonthIncome * transCat.rate;
+                    let usedTrans = transCat.expenses
+                        .filter(e => (e.month || realCurrentMonth) === realCurrentMonth)
+                        .reduce((sum, e) => sum + e.amount, 0);
+                    let sisaTrans = budgetTrans - usedTrans;
+                    if (sisaTrans > 0) {
+                        totalTransferAmount += sisaTrans;
+                    }
+                }
+
+                // Jika ada sisa dari makan/transportasi, alihkan ke pengeluaran tak terduga dan catat rekapitulasinya di sana
+                if (totalTransferAmount > 0 && takTerdugaCat) {
+                    const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                    const fullDateTime = `${todayDateStr}, pukul ${timeStr}`;
+                    
+                    // Catat rekapitulasi penambahan di pengeluaran tak terduga (sebagai penambahan alokasi masuk)
+                    takTerdugaCat.expenses.push({
+                        desc: 'Otomatis Alokasi Sisa Senin (Makan & Transportasi)',
+                        amount: -totalTransferAmount, // Nilai minus karena ini menambah sisa/mengurangi beban terpakai di tak terduga
+                        date: fullDateTime,
+                        month: realCurrentMonth
+                    });
+
+                    appData.lastMondayTransferDate = todayDateStr;
+                    await saveUserData();
+                }
+            }
         }
 
         window.addIncome = async function() {
@@ -702,7 +853,15 @@
         window.deleteExpense = async function(catId, expIndexGlobal) {
             const category = appData.categories.find(c => c.id === catId);
             if (category) {
-                appData.totalWallet += category.expenses[expIndexGlobal].amount;
+                let expItem = category.expenses[expIndexGlobal];
+                // Jika itu bukan penambahan negatif otomatis, kembalikan ke dompet
+                if (expItem.amount > 0) {
+                    appData.totalWallet += expItem.amount;
+                } else {
+                    // Jika itu penambahan negatif otomatis dari senin, balikkan efeknya
+                    appData.totalWallet -= Math.abs(expItem.amount);
+                    if (appData.totalWallet < 0) appData.totalWallet = 0;
+                }
                 category.expenses.splice(expIndexGlobal, 1);
                 await saveUserData();
                 renderApp();
@@ -734,6 +893,35 @@
             renderHistoryPage();
         };
 
+        window.openAllocationDetails = function(catId, catName, formula, totalBudget, currentMonthIncome) {
+            const modal = document.getElementById('allocationModal');
+            document.getElementById('modalCategoryTitle').innerText = catName;
+            
+            let realCurrentMonth = new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+
+            document.getElementById('modalAllocationBody').innerHTML = `
+                <p style="margin: 0 0 8px 0; color: var(--text-muted);">Periode Bulan: <strong style="color: white;">${realCurrentMonth}</strong></p>
+                <p style="margin: 0 0 8px 0;">Total Pemasukan Bulan Ini: <strong style="color: var(--success-color);">${formatRupiah(currentMonthIncome)}</strong></p>
+                <p style="margin: 0 0 8px 0;">Rumus Alokasi: <strong style="color: #c084fc;">${formula}</strong></p>
+                <div style="background: rgba(13, 11, 18, 0.6); padding: 12px; border-radius: 10px; margin-top: 12px; border: 1px solid rgba(255,255,255,0.04); text-align: center;">
+                    <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 4px;">Hasil Alokasi Bulan Ini</span>
+                    <strong style="font-size: 18px; color: #d8b4fe;">${formatRupiah(totalBudget)}</strong>
+                </div>
+            `;
+            modal.style.display = 'flex';
+        };
+
+        window.closeAllocationModal = function() {
+            document.getElementById('allocationModal').style.display = 'none';
+        };
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('allocationModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+
         function formatRupiah(num) {
             return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
         }
@@ -743,7 +931,6 @@
 
             let realCurrentMonth = new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
 
-            // Hitung total pemasukan khusus di bulan ini saja agar alokasi akurat
             let currentMonthIncome = appData.incomes
                 .filter(inc => (inc.month || realCurrentMonth) === realCurrentMonth)
                 .reduce((sum, inc) => sum + inc.amount, 0);
@@ -804,7 +991,6 @@
                 });
             }
 
-            // Render Kategori Pengeluaran di Beranda Utama (Alokasi berbasis pemasukan bulan ini)
             const catContainer = document.getElementById('categoriesContainer');
             catContainer.innerHTML = '';
 
@@ -818,25 +1004,33 @@
 
                 let historyHtml = activeExpenses.length === 0 ? 
                     '<div style="color: #6b7280; font-size: 12px; font-style: italic; text-align:center; padding: 4px;">Belum ada catatan bulan ini.</div>' : 
-                    activeExpenses.map((exp) => `
+                    activeExpenses.map((exp) => {
+                        let isTransferIn = exp.amount < 0;
+                        let displayAmount = isTransferIn ? `+ ${formatRupiah(Math.abs(exp.amount))}` : `- ${formatRupiah(exp.amount)}`;
+                        let amountColor = isTransferIn ? 'var(--success-color)' : 'var(--danger-color)';
+                        return `
                         <li class="history-item">
                             <div>
                                 <span style="font-weight:600;">${exp.desc}</span>
                                 <div style="font-size: 10px; color: var(--text-muted);">${exp.date || ''}</div>
-                                <div style="font-size: 11px; color: var(--danger-color);">- ${formatRupiah(exp.amount)}</div>
+                                <div style="font-size: 11px; color: ${amountColor};">${displayAmount}</div>
                             </div>
                             <button class="delete-btn" onclick="deleteExpense('${cat.id}', ${exp.originalIndex})">&times;</button>
-                        </li>`).join('');
+                        </li>`;
+                    }).join('');
 
                 catContainer.innerHTML += `
                     <div class="category-card">
-                        <div class="category-header">
+                        <div class="category-header" style="margin-bottom: 8px; border-bottom: none; padding-bottom: 0;">
                             <div><div class="category-title">${cat.name}</div><div class="category-formula">Formula: ${cat.formula}</div></div>
-                            <div class="category-stats">
-                                <div>Alokasi: <span class="stat-budget">${formatRupiah(totalBudget)}</span></div>
-                                <div style="margin-top: 3px;">Sisa: <span class="stat-remaining ${remaining < 0 ? 'negative' : ''}">${formatRupiah(remaining)}</span></div>
-                            </div>
                         </div>
+                        <div class="clickable-saldo-container">
+                            <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Saldo: </span>
+                            <span class="clickable-saldo-value ${remaining < 0 ? 'negative' : ''}" onclick="openAllocationDetails('${cat.id}', '${cat.name}', '${cat.formula}', ${totalBudget}, ${currentMonthIncome})">
+                                ${formatRupiah(remaining)}
+                            </span>
+                        </div>
+                        <div style="border-bottom: 1px solid rgba(255, 255, 255, 0.06); margin-bottom: 10px; padding-bottom: 6px;"></div>
                         <ul class="history-list">${historyHtml}</ul>
                         <div class="input-row">
                             <input type="text" id="desc-${cat.id}" placeholder="Keterangan" style="flex: 2;">
@@ -887,15 +1081,20 @@
 
                 let historyHtml = historyExpenses.length === 0 ? 
                     `<div style="color: #6b7280; font-size: 12px; font-style: italic; text-align:center; padding: 10px;">Tidak ada riwayat pengeluaran di bulan ${selectedHistoryMonth}.</div>` : 
-                    historyExpenses.map((exp) => `
+                    historyExpenses.map((exp) => {
+                        let isTransferIn = exp.amount < 0;
+                        let displayAmount = isTransferIn ? `+ ${formatRupiah(Math.abs(exp.amount))}` : `- ${formatRupiah(exp.amount)}`;
+                        let amountColor = isTransferIn ? 'var(--success-color)' : 'var(--danger-color)';
+                        return `
                         <li class="history-item">
                             <div>
                                 <span style="font-weight:600;">${exp.desc}</span>
                                 <div style="font-size: 10px; color: var(--text-muted);">${exp.date || ''}</div>
-                                <div style="font-size: 11px; color: var(--danger-color);">- ${formatRupiah(exp.amount)}</div>
+                                <div style="font-size: 11px; color: ${amountColor};">${displayAmount}</div>
                             </div>
                             <button class="delete-btn" onclick="deleteExpense('${cat.id}', ${exp.originalIndex})">&times;</button>
-                        </li>`).join('');
+                        </li>`;
+                    }).join('');
 
                 historyContainer.innerHTML += `
                     <div class="category-card">
