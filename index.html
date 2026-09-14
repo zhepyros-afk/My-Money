@@ -315,7 +315,6 @@
             font-weight: 600;
         }
 
-        /* Styling Kartu Kategori & Responsif Portrait */
         .category-card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
@@ -331,7 +330,7 @@
 
         .category-header {
             display: flex;
-            flex-direction: column; /* Default portrait: tersusun ke bawah agar tidak bertumpuk */
+            flex-direction: column;
             gap: 6px;
             margin-bottom: 12px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -341,7 +340,6 @@
         .category-title { font-weight: 800; font-size: 15px; color: #f3e8ff; }
         .category-formula { font-size: 11px; color: var(--text-muted); }
 
-        /* Tampilan Saldo Kategori */
         .clickable-saldo-container {
             display: flex;
             justify-content: space-between;
@@ -365,10 +363,9 @@
         .clickable-saldo-value.negative { color: var(--danger-color); }
         .clickable-saldo-value:hover { opacity: 0.8; }
 
-        /* Form Input Catat Pengeluaran untuk Mode Portrait (Tersusun rapi ke bawah) */
         .input-row { 
             display: flex; 
-            flex-direction: column; /* Portrait: Input keterangan, nominal, & tombol tersusun vertikal penuh */
+            flex-direction: column; 
             gap: 8px; 
         }
 
@@ -396,7 +393,6 @@
             font-weight: 700;
         }
 
-        /* Pengaturan Khusus Mode Lanskap (Lebar layar min 768px) agar kembali sejajar ke samping */
         @media (min-width: 768px) {
             .category-header {
                 flex-direction: row;
@@ -428,7 +424,6 @@
             }
         }
 
-        /* Styling Modal Rincian Alokasi */
         .allocation-modal {
             display: none;
             position: fixed;
@@ -503,6 +498,18 @@
         .delete-btn { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 15px; padding: 0 4px; }
         .delete-btn:hover { color: var(--danger-color); }
 
+        .restore-btn {
+            background: rgba(74, 222, 128, 0.2);
+            color: #4ade80;
+            border: 1px solid rgba(74, 222, 128, 0.4);
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .restore-btn:hover { background: rgba(74, 222, 128, 0.3); }
+
         .toggle-link { text-align: center; margin-top: 15px; font-size: 12px; color: var(--text-muted); }
         .toggle-link span { color: #c084fc; cursor: pointer; font-weight: 600; }
         .toggle-link span:hover { text-decoration: underline; }
@@ -566,6 +573,7 @@
         <div class="nav-tabs">
             <button id="tabHome" class="nav-btn active" onclick="switchPage('home')">🏠 Beranda Utama</button>
             <button id="tabHistory" class="nav-btn" onclick="switchPage('history')">📜 History Bulan Lalu</button>
+            <button id="tabTrash" class="nav-btn" onclick="switchPage('trash')">🗑️ Sampah (Trash)</button>
         </div>
 
         <div id="pageHome">
@@ -620,6 +628,14 @@
             <div id="historyPageIncomeContainer"></div>
             <div id="historyPageCategoriesContainer"></div>
         </div>
+
+        <div id="pageTrash" style="display: none;">
+            <div class="card">
+                <h3>🗑️ Tempat Sampah (Riwayat Terhapus)</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;">Catatan yang dihapus tersimpan di sini. Anda dapat memulihkannya jika terhapus tidak sengaja.</p>
+                <div id="trashContainer"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Modal Rincian Alokasi & Rumus -->
@@ -661,9 +677,10 @@
                 { id: 'investasi', name: '1. Pengeluaran Investasi', rate: 0.15, formula: '0,15 × total pemasukan', expenses: [] },
                 { id: 'transportasi', name: '2. Pengeluaran Transportasi', rate: 0.20, formula: '0,20 × total pemasukan', expenses: [] },
                 { id: 'makan', name: '3. Pengeluaran Makan', rate: 0.50, formula: '0,50 × total pemasukan', expenses: [] },
-                { id: 'tak_terduga', name: '4. Pengeluaran Tak Terduga', rate: 0.15, formula: '0,15 × total pemasukan', expenses: [] }
+                { id: 'tak_terduga', name: '4. Pengeluaran Tak Terduga', rate: 0.15, formula: 'Sisa Saldo Dompet Keseluruhan', expenses: [] }
             ],
-            lastMondayTransferDate: null
+            trash: [], // Menyimpan data yang dihapus sementara
+            executedMondayDates: []
         };
 
         let selectedHistoryMonth = new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
@@ -740,12 +757,11 @@
                         { id: 'investasi', name: '1. Pengeluaran Investasi', rate: 0.15, formula: '0,15 × total pemasukan', expenses: [] },
                         { id: 'transportasi', name: '2. Pengeluaran Transportasi', rate: 0.20, formula: '0,20 × total pemasukan', expenses: [] },
                         { id: 'makan', name: '3. Pengeluaran Makan', rate: 0.50, formula: '0,50 × total pemasukan', expenses: [] },
-                        { id: 'tak_terduga', name: '4. Pengeluaran Tak Terduga', rate: 0.15, formula: '0,15 × total pemasukan', expenses: [] }
+                        { id: 'tak_terduga', name: '4. Pengeluaran Tak Terduga', rate: 0.15, formula: 'Sisa Saldo Dompet Keseluruhan', expenses: [] }
                     ];
                 }
-                if (appData.lastMondayTransferDate === undefined) {
-                    appData.lastMondayTransferDate = null;
-                }
+                if (!appData.trash) appData.trash = [];
+                if (!appData.executedMondayDates) appData.executedMondayDates = [];
             } else {
                 await saveUserData();
             }
@@ -764,48 +780,59 @@
             const dayOfWeek = now.getDay();
             const todayDateStr = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
-            if (dayOfWeek === 1 && appData.lastMondayTransferDate !== todayDateStr) {
+            if (dayOfWeek === 1 && !appData.executedMondayDates.includes(todayDateStr)) {
                 let realCurrentMonth = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
-                let currentMonthIncome = appData.incomes
-                    .filter(inc => (inc.month || realCurrentMonth) === realCurrentMonth)
+                let pastIncome = appData.incomes
+                    .filter(inc => {
+                        if (inc.date && inc.date.includes(todayDateStr)) return false;
+                        return (inc.month || realCurrentMonth) === realCurrentMonth;
+                    })
                     .reduce((sum, inc) => sum + inc.amount, 0);
 
                 const makanCat = appData.categories.find(c => c.id === 'makan');
                 const transCat = appData.categories.find(c => c.id === 'transportasi');
                 const takTerdugaCat = appData.categories.find(c => c.id === 'tak_terduga');
 
-                let totalTransferAmount = 0;
+                let sisaMakan = 0;
+                let sisaTrans = 0;
 
                 if (makanCat) {
-                    let budgetMakan = currentMonthIncome * makanCat.rate;
+                    let budgetMakan = pastIncome * makanCat.rate;
                     let usedMakan = makanCat.expenses
-                        .filter(e => (e.month || realCurrentMonth) === realCurrentMonth)
+                        .filter(e => {
+                            if (e.date && e.date.includes(todayDateStr)) return false;
+                            return (e.month || realCurrentMonth) === realCurrentMonth && e.amount > 0;
+                        })
                         .reduce((sum, e) => sum + e.amount, 0);
-                    let sisaMakan = budgetMakan - usedMakan;
-                    if (sisaMakan > 0) totalTransferAmount += sisaMakan;
+                    sisaMakan = budgetMakan - usedMakan;
                 }
 
                 if (transCat) {
-                    let budgetTrans = currentMonthIncome * transCat.rate;
+                    let budgetTrans = pastIncome * transCat.rate;
                     let usedTrans = transCat.expenses
-                        .filter(e => (e.month || realCurrentMonth) === realCurrentMonth)
+                        .filter(e => {
+                            if (e.date && e.date.includes(todayDateStr)) return false;
+                            return (e.month || realCurrentMonth) === realCurrentMonth && e.amount > 0;
+                        })
                         .reduce((sum, e) => sum + e.amount, 0);
-                    let sisaTrans = budgetTrans - usedTrans;
-                    if (sisaTrans > 0) totalTransferAmount += sisaTrans;
+                    sisaTrans = budgetTrans - usedTrans;
                 }
 
-                if (totalTransferAmount > 0 && takTerdugaCat) {
-                    const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-                    const fullDateTime = `${todayDateStr}, pukul ${timeStr}`;
-                    
-                    takTerdugaCat.expenses.push({
-                        desc: 'Otomatis Alokasi Sisa Senin (Makan & Transportasi)',
-                        amount: -totalTransferAmount,
-                        date: fullDateTime,
-                        month: realCurrentMonth
-                    });
+                let totalTransfer = (sisaMakan > 0 ? sisaMakan : 0) + (sisaTrans > 0 ? sisaTrans : 0);
 
-                    appData.lastMondayTransferDate = todayDateStr;
+                if (totalTransfer > 0 && takTerdugaCat) {
+                    const fullDateTime = `${todayDateStr}, pukul 00:00`;
+                    
+                    if (sisaMakan > 0) {
+                        makanCat.expenses.push({ desc: 'Alihkan Sisa ke Tak Terduga (Senin 00:00)', amount: sisaMakan, date: fullDateTime, month: realCurrentMonth });
+                    }
+                    if (sisaTrans > 0) {
+                        transCat.expenses.push({ desc: 'Alihkan Sisa ke Tak Terduga (Senin 00:00)', amount: sisaTrans, date: fullDateTime, month: realCurrentMonth });
+                    }
+
+                    takTerdugaCat.expenses.push({ desc: 'Otomatis Alokasi Sisa Senin (Makan & Transportasi)', amount: -totalTransfer, date: fullDateTime, month: realCurrentMonth });
+
+                    appData.executedMondayDates.push(todayDateStr);
                     await saveUserData();
                 }
             }
@@ -835,6 +862,7 @@
             renderApp();
         };
 
+        // Hapus Pemasukan (Masuk Trash)
         window.deleteIncome = async function(incIndexGlobal) {
             const inc = appData.incomes[incIndexGlobal];
             if (inc) {
@@ -842,7 +870,11 @@
                 if (appData.totalWallet < 0) appData.totalWallet = 0;
                 appData.totalCumulativeIncome -= inc.amount;
                 if (appData.totalCumulativeIncome < 0) appData.totalCumulativeIncome = 0;
+                
+                // Pindah ke Trash
+                appData.trash.push({ type: 'income', data: inc });
                 appData.incomes.splice(incIndexGlobal, 1);
+                
                 await saveUserData();
                 renderApp();
             }
@@ -881,6 +913,7 @@
             }
         };
 
+        // Hapus Pengeluaran (Masuk Trash)
         window.deleteExpense = async function(catId, expIndexGlobal) {
             const category = appData.categories.find(c => c.id === catId);
             if (category) {
@@ -891,25 +924,66 @@
                     appData.totalWallet -= Math.abs(expItem.amount);
                     if (appData.totalWallet < 0) appData.totalWallet = 0;
                 }
+                
+                // Pindah ke Trash
+                appData.trash.push({ type: 'expense', catId: catId, data: expItem });
                 category.expenses.splice(expIndexGlobal, 1);
+                
+                await saveUserData();
+                renderApp();
+            }
+        };
+
+        // Fitur Mengembalikan (Restore) dari Sampah
+        window.restoreFromTrash = async function(trashIndex) {
+            let item = appData.trash[trashIndex];
+            if (!item) return;
+
+            if (item.type === 'income') {
+                appData.totalWallet += item.data.amount;
+                appData.totalCumulativeIncome += item.data.amount;
+                appData.incomes.push(item.data);
+            } else if (item.type === 'expense') {
+                const category = appData.categories.find(c => c.id === item.catId);
+                if (category) {
+                    if (item.data.amount > 0) {
+                        if (item.data.amount > appData.totalWallet) {
+                            alert('Gagal memulihkan: Saldo dompet tidak mencukupi untuk mengembalikan pengeluaran ini.');
+                            return;
+                        }
+                        appData.totalWallet -= item.data.amount;
+                    } else {
+                        appData.totalWallet += Math.abs(item.data.amount);
+                    }
+                    category.expenses.push(item.data);
+                }
+            }
+
+            appData.trash.splice(trashIndex, 1);
+            await saveUserData();
+            renderApp();
+        };
+
+        // Hapus Permanen dari Sampah
+        window.deletePermanently = async function(trashIndex) {
+            if (confirm('Hapus item ini secara permanen?')) {
+                appData.trash.splice(trashIndex, 1);
                 await saveUserData();
                 renderApp();
             }
         };
 
         window.switchPage = function(pageName) {
-            if (pageName === 'home') {
-                document.getElementById('pageHome').style.display = 'block';
-                document.getElementById('pageHistory').style.display = 'none';
-                document.getElementById('tabHome').classList.add('active');
-                document.getElementById('tabHistory').classList.remove('active');
-            } else {
-                document.getElementById('pageHome').style.display = 'none';
-                document.getElementById('pageHistory').style.display = 'block';
-                document.getElementById('tabHistory').classList.add('active');
-                document.getElementById('tabHome').classList.remove('active');
-                renderHistoryPage();
-            }
+            document.getElementById('pageHome').style.display = pageName === 'home' ? 'block' : 'none';
+            document.getElementById('pageHistory').style.display = pageName === 'history' ? 'block' : 'none';
+            document.getElementById('pageTrash').style.display = pageName === 'trash' ? 'block' : 'none';
+
+            document.getElementById('tabHome').classList.toggle('active', pageName === 'home');
+            document.getElementById('tabHistory').classList.toggle('active', pageName === 'history');
+            document.getElementById('tabTrash').classList.toggle('active', pageName === 'trash');
+
+            if (pageName === 'history') renderHistoryPage();
+            if (pageName === 'trash') renderTrashPage();
         };
 
         window.openHistoryForMonth = function(monthName) {
@@ -946,9 +1020,7 @@
 
         window.onclick = function(event) {
             const modal = document.getElementById('allocationModal');
-            if (event.target === modal) {
-                modal.style.display = 'none';
-            }
+            if (event.target === modal) modal.style.display = 'none';
         };
 
         function formatRupiah(num) {
@@ -969,7 +1041,7 @@
             let currentExpense = 0;
             appData.categories.forEach(cat => {
                 currentExpense += cat.expenses
-                    .filter(item => (item.month || realCurrentMonth) === realCurrentMonth)
+                    .filter(item => (item.month || realCurrentMonth) === realCurrentMonth && item.amount > 0)
                     .reduce((sum, item) => sum + item.amount, 0);
             });
             document.getElementById('recapTotalExpense').innerText = formatRupiah(currentExpense);
@@ -986,7 +1058,7 @@
                 cat.expenses.forEach(exp => {
                     let m = exp.month || realCurrentMonth;
                     if (!monthlyData[m]) monthlyData[m] = { income: 0, expense: 0 };
-                    monthlyData[m].expense += exp.amount;
+                    if (exp.amount > 0) monthlyData[m].expense += exp.amount;
                 });
             });
 
@@ -1024,7 +1096,27 @@
             catContainer.innerHTML = '';
 
             appData.categories.forEach(cat => {
-                let totalBudget = currentMonthIncome * cat.rate;
+                let totalBudget = 0;
+                
+                if (cat.id === 'tak_terduga') {
+                    let allocatedOthers = 0;
+                    appData.categories.forEach(c => {
+                        if (c.id !== 'tak_terduga') allocatedOthers += (currentMonthIncome * c.rate);
+                    });
+                    let usedOthersExpense = 0;
+                    appData.categories.forEach(c => {
+                        if (c.id !== 'tak_terduga') {
+                            usedOthersExpense += c.expenses
+                                .filter(e => (e.month || realCurrentMonth) === realCurrentMonth)
+                                .reduce((sum, e) => sum + e.amount, 0);
+                        }
+                    });
+                    totalBudget = appData.totalWallet - (allocatedOthers - usedOthersExpense);
+                    if (totalBudget < 0) totalBudget = 0;
+                } else {
+                    totalBudget = currentMonthIncome * cat.rate;
+                }
+
                 let activeExpenses = cat.expenses.map((exp, originalIndex) => ({ ...exp, originalIndex }))
                                                  .filter(exp => (exp.month || realCurrentMonth) === realCurrentMonth);
 
@@ -1073,6 +1165,9 @@
 
             if (document.getElementById('pageHistory').style.display === 'block') {
                 renderHistoryPage();
+            }
+            if (document.getElementById('pageTrash').style.display === 'block') {
+                renderTrashPage();
             }
         }
 
@@ -1135,6 +1230,35 @@
                         <ul class="history-list" style="max-height: none;">${historyHtml}</ul>
                     </div>`;
             });
+        }
+
+        // Render Halaman Sampah (Trash)
+        function renderTrashPage() {
+            const trashContainer = document.getElementById('trashContainer');
+            if (!appData.trash || appData.trash.length === 0) {
+                trashContainer.innerHTML = '<div style="color: #6b7280; font-size: 12px; font-style: italic; text-align: center; padding: 15px;">Tempat sampah kosong.</div>';
+                return;
+            }
+
+            trashContainer.innerHTML = `<ul class="history-list" style="max-height: none;">` + 
+                appData.trash.map((item, index) => {
+                    let title = item.type === 'income' ? `[Pemasukan] ${item.data.source}` : `[Pengeluaran] ${item.data.desc}`;
+                    let nominal = item.type === 'income' ? `+ ${formatRupiah(item.data.amount)}` : `- ${formatRupiah(Math.abs(item.data.amount))}`;
+                    let color = item.type === 'income' ? 'var(--success-color)' : 'var(--danger-color)';
+
+                    return `
+                        <li class="history-item">
+                            <div>
+                                <span style="font-weight:600;">${title}</span>
+                                <div style="font-size: 9px; color: var(--text-muted);">${item.data.date || ''}</div>
+                                <div style="font-size: 11px; color: ${color};">${nominal}</div>
+                            </div>
+                            <div style="display: flex; gap: 6px;">
+                                <button class="restore-btn" onclick="restoreFromTrash(${index})">Pulihkan</button>
+                                <button class="delete-btn" onclick="deletePermanently(${index})" title="Hapus Permanen">🗑️</button>
+                            </div>
+                        </li>`;
+                }).join('') + `</ul>`;
         }
     </script>
 </body>
