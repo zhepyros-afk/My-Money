@@ -93,7 +93,7 @@
 
         .nav-tabs {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             margin-bottom: 20px;
         }
 
@@ -102,12 +102,12 @@
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             color: var(--text-muted);
-            padding: 10px;
+            padding: 10px 6px;
             border-radius: 12px;
             font-weight: 700;
             cursor: pointer;
             text-align: center;
-            font-size: 13px;
+            font-size: 11px;
             transition: all 0.3s ease;
         }
 
@@ -571,9 +571,9 @@
         </div>
 
         <div class="nav-tabs">
-            <button id="tabHome" class="nav-btn active" onclick="switchPage('home')">🏠 Beranda Utama</button>
-            <button id="tabHistory" class="nav-btn" onclick="switchPage('history')">📜 History Bulan Lalu</button>
-            <button id="tabTrash" class="nav-btn" onclick="switchPage('trash')">🗑️ Sampah (Trash)</button>
+            <button id="tabHome" class="nav-btn active" onclick="switchPage('home')">🏠 Beranda</button>
+            <button id="tabHistory" class="nav-btn" onclick="switchPage('history')">📜 History</button>
+            <button id="tabTrash" class="nav-btn" onclick="switchPage('trash')">🗑️ Sampah</button>
         </div>
 
         <div id="pageHome">
@@ -679,7 +679,7 @@
                 { id: 'makan', name: '3. Pengeluaran Makan', rate: 0.50, formula: '0,50 × total pemasukan', expenses: [] },
                 { id: 'tak_terduga', name: '4. Pengeluaran Tak Terduga', rate: 0.15, formula: 'Sisa Saldo Dompet Keseluruhan', expenses: [] }
             ],
-            trash: [], // Menyimpan data yang dihapus sementara
+            trash: [],
             executedMondayDates: []
         };
 
@@ -763,9 +763,22 @@
                 if (!appData.trash) appData.trash = [];
                 if (!appData.executedMondayDates) appData.executedMondayDates = [];
             } else {
+                appData = {
+                    totalWallet: 0,
+                    totalCumulativeIncome: 0,
+                    incomes: [],
+                    categories: [
+                        { id: 'investasi', name: '1. Pengeluaran Investasi', rate: 0.15, formula: '0,15 × total pemasukan', expenses: [] },
+                        { id: 'transportasi', name: '2. Pengeluaran Transportasi', rate: 0.20, formula: '0,20 × total pemasukan', expenses: [] },
+                        { id: 'makan', name: '3. Pengeluaran Makan', rate: 0.50, formula: '0,50 × total pemasukan', expenses: [] },
+                        { id: 'tak_terduga', name: '4. Pengeluaran Tak Terduga', rate: 0.15, formula: 'Sisa Saldo Dompet Keseluruhan', expenses: [] }
+                    ],
+                    trash: [],
+                    executedMondayDates: []
+                };
                 await saveUserData();
             }
-            checkAndExecuteMondayAutomation();
+            await checkAndExecuteMondayAutomation();
             renderApp();
         }
 
@@ -780,60 +793,66 @@
             const dayOfWeek = now.getDay();
             const todayDateStr = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
-            if (dayOfWeek === 1 && !appData.executedMondayDates.includes(todayDateStr)) {
-                let realCurrentMonth = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
-                let pastIncome = appData.incomes
-                    .filter(inc => {
-                        if (inc.date && inc.date.includes(todayDateStr)) return false;
-                        return (inc.month || realCurrentMonth) === realCurrentMonth;
-                    })
-                    .reduce((sum, inc) => sum + inc.amount, 0);
-
-                const makanCat = appData.categories.find(c => c.id === 'makan');
-                const transCat = appData.categories.find(c => c.id === 'transportasi');
-                const takTerdugaCat = appData.categories.find(c => c.id === 'tak_terduga');
-
-                let sisaMakan = 0;
-                let sisaTrans = 0;
-
-                if (makanCat) {
-                    let budgetMakan = pastIncome * makanCat.rate;
-                    let usedMakan = makanCat.expenses
-                        .filter(e => {
-                            if (e.date && e.date.includes(todayDateStr)) return false;
-                            return (e.month || realCurrentMonth) === realCurrentMonth && e.amount > 0;
-                        })
-                        .reduce((sum, e) => sum + e.amount, 0);
-                    sisaMakan = budgetMakan - usedMakan;
-                }
-
-                if (transCat) {
-                    let budgetTrans = pastIncome * transCat.rate;
-                    let usedTrans = transCat.expenses
-                        .filter(e => {
-                            if (e.date && e.date.includes(todayDateStr)) return false;
-                            return (e.month || realCurrentMonth) === realCurrentMonth && e.amount > 0;
-                        })
-                        .reduce((sum, e) => sum + e.amount, 0);
-                    sisaTrans = budgetTrans - usedTrans;
-                }
-
-                let totalTransfer = (sisaMakan > 0 ? sisaMakan : 0) + (sisaTrans > 0 ? sisaTrans : 0);
-
-                if (totalTransfer > 0 && takTerdugaCat) {
-                    const fullDateTime = `${todayDateStr}, pukul 00:00`;
-                    
-                    if (sisaMakan > 0) {
-                        makanCat.expenses.push({ desc: 'Alihkan Sisa ke Tak Terduga (Senin 00:00)', amount: sisaMakan, date: fullDateTime, month: realCurrentMonth });
-                    }
-                    if (sisaTrans > 0) {
-                        transCat.expenses.push({ desc: 'Alihkan Sisa ke Tak Terduga (Senin 00:00)', amount: sisaTrans, date: fullDateTime, month: realCurrentMonth });
-                    }
-
-                    takTerdugaCat.expenses.push({ desc: 'Otomatis Alokasi Sisa Senin (Makan & Transportasi)', amount: -totalTransfer, date: fullDateTime, month: realCurrentMonth });
-
+            if (dayOfWeek === 1) {
+                if (!appData.executedMondayDates) appData.executedMondayDates = [];
+                
+                if (!appData.executedMondayDates.includes(todayDateStr)) {
                     appData.executedMondayDates.push(todayDateStr);
                     await saveUserData();
+
+                    let realCurrentMonth = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+                    let pastIncome = appData.incomes
+                        .filter(inc => {
+                            if (inc.date && inc.date.includes(todayDateStr)) return false;
+                            return (inc.month || realCurrentMonth) === realCurrentMonth;
+                        })
+                        .reduce((sum, inc) => sum + inc.amount, 0);
+
+                    const makanCat = appData.categories.find(c => c.id === 'makan');
+                    const transCat = appData.categories.find(c => c.id === 'transportasi');
+                    const takTerdugaCat = appData.categories.find(c => c.id === 'tak_terduga');
+
+                    let sisaMakan = 0;
+                    let sisaTrans = 0;
+
+                    if (makanCat) {
+                        let budgetMakan = pastIncome * makanCat.rate;
+                        let usedMakan = makanCat.expenses
+                            .filter(e => {
+                                if (e.date && e.date.includes(todayDateStr)) return false;
+                                return (e.month || realCurrentMonth) === realCurrentMonth && e.amount > 0;
+                            })
+                            .reduce((sum, e) => sum + e.amount, 0);
+                        sisaMakan = budgetMakan - usedMakan;
+                    }
+
+                    if (transCat) {
+                        let budgetTrans = pastIncome * transCat.rate;
+                        let usedTrans = transCat.expenses
+                            .filter(e => {
+                                if (e.date && e.date.includes(todayDateStr)) return false;
+                                return (e.month || realCurrentMonth) === realCurrentMonth && e.amount > 0;
+                            })
+                            .reduce((sum, e) => sum + e.amount, 0);
+                        sisaTrans = budgetTrans - usedTrans;
+                    }
+
+                    let totalTransfer = (sisaMakan > 0 ? sisaMakan : 0) + (sisaTrans > 0 ? sisaTrans : 0);
+
+                    if (totalTransfer > 0 && takTerdugaCat) {
+                        const fullDateTime = `${todayDateStr}, pukul 00:00`;
+                        
+                        if (sisaMakan > 0) {
+                            makanCat.expenses.push({ desc: 'Alihkan Sisa ke Tak Terduga (Senin 00:00)', amount: sisaMakan, date: fullDateTime, month: realCurrentMonth });
+                        }
+                        if (sisaTrans > 0) {
+                            transCat.expenses.push({ desc: 'Alihkan Sisa ke Tak Terduga (Senin 00:00)', amount: sisaTrans, date: fullDateTime, month: realCurrentMonth });
+                        }
+
+                        takTerdugaCat.expenses.push({ desc: 'Otomatis Alokasi Sisa Senin (Makan & Transportasi)', amount: -totalTransfer, date: fullDateTime, month: realCurrentMonth });
+
+                        await saveUserData();
+                    }
                 }
             }
         }
@@ -862,7 +881,6 @@
             renderApp();
         };
 
-        // Hapus Pemasukan (Masuk Trash)
         window.deleteIncome = async function(incIndexGlobal) {
             const inc = appData.incomes[incIndexGlobal];
             if (inc) {
@@ -871,7 +889,6 @@
                 appData.totalCumulativeIncome -= inc.amount;
                 if (appData.totalCumulativeIncome < 0) appData.totalCumulativeIncome = 0;
                 
-                // Pindah ke Trash
                 appData.trash.push({ type: 'income', data: inc });
                 appData.incomes.splice(incIndexGlobal, 1);
                 
@@ -913,7 +930,6 @@
             }
         };
 
-        // Hapus Pengeluaran (Masuk Trash)
         window.deleteExpense = async function(catId, expIndexGlobal) {
             const category = appData.categories.find(c => c.id === catId);
             if (category) {
@@ -925,7 +941,6 @@
                     if (appData.totalWallet < 0) appData.totalWallet = 0;
                 }
                 
-                // Pindah ke Trash
                 appData.trash.push({ type: 'expense', catId: catId, data: expItem });
                 category.expenses.splice(expIndexGlobal, 1);
                 
@@ -934,7 +949,6 @@
             }
         };
 
-        // Fitur Mengembalikan (Restore) dari Sampah
         window.restoreFromTrash = async function(trashIndex) {
             let item = appData.trash[trashIndex];
             if (!item) return;
@@ -964,7 +978,6 @@
             renderApp();
         };
 
-        // Hapus Permanen dari Sampah
         window.deletePermanently = async function(trashIndex) {
             if (confirm('Hapus item ini secara permanen?')) {
                 appData.trash.splice(trashIndex, 1);
@@ -1096,26 +1109,7 @@
             catContainer.innerHTML = '';
 
             appData.categories.forEach(cat => {
-                let totalBudget = 0;
-                
-                if (cat.id === 'tak_terduga') {
-                    let allocatedOthers = 0;
-                    appData.categories.forEach(c => {
-                        if (c.id !== 'tak_terduga') allocatedOthers += (currentMonthIncome * c.rate);
-                    });
-                    let usedOthersExpense = 0;
-                    appData.categories.forEach(c => {
-                        if (c.id !== 'tak_terduga') {
-                            usedOthersExpense += c.expenses
-                                .filter(e => (e.month || realCurrentMonth) === realCurrentMonth)
-                                .reduce((sum, e) => sum + e.amount, 0);
-                        }
-                    });
-                    totalBudget = appData.totalWallet - (allocatedOthers - usedOthersExpense);
-                    if (totalBudget < 0) totalBudget = 0;
-                } else {
-                    totalBudget = currentMonthIncome * cat.rate;
-                }
+                let totalBudget = currentMonthIncome * cat.rate;
 
                 let activeExpenses = cat.expenses.map((exp, originalIndex) => ({ ...exp, originalIndex }))
                                                  .filter(exp => (exp.month || realCurrentMonth) === realCurrentMonth);
@@ -1232,7 +1226,6 @@
             });
         }
 
-        // Render Halaman Sampah (Trash)
         function renderTrashPage() {
             const trashContainer = document.getElementById('trashContainer');
             if (!appData.trash || appData.trash.length === 0) {
